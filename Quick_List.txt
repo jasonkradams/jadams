@@ -1,0 +1,363 @@
+# Generate new host keys for a BIG-IP System
+
+ssh-keygen -l -f /config/ssh/ssh_host_dsa_key
+ssh-keygen -l -f /config/ssh/ssh_host_dsa_key.pub
+ssh-keygen -l -f /config/ssh/ssh_host_key
+ssh-keygen -l -f /config/ssh/ssh_host_key.pub
+ssh-keygen -l -f /config/ssh/ssh_host_rsa_key
+ssh-keygen -l -f /config/ssh/ssh_host_rsa_key.pub
+
+ONE-LINER:
+
+for i in /root/.ssh/{authorized_keys,identity,identity.pub} /config/ssh/{ssh_host_dsa_key,ssh_host_dsa_key.pub,ssh_host_key,ssh_host_key.pub,ssh_host_rsa_key,ssh_host_rsa_key.pub};do ssh-keygen -l -f $i;doneGlete ltm dns cache records rrset [type a] cache casino [owner avantel.co]
+tmsh show ltm dns cache records rrset cache avantel-validate-resolver count-only
+
+##################################################################
+
+# Example of formatting tshark output.
+# tshark -r vdimonitor.1.pcap -2 -R "http.response.code==200" -o 'gui.column.format:"No.","%m","Source","%s","Source Port","%S","Destination","%d","Destination Port","%D","Protocol","%p","Packet Length","%L","Info","%i"'
+
+##############################################
+
+# DNS CACHE
+
+  tmsh show ltm dns cache records rrset cache casino [owner ns1.yahoo.com]
+  tmsh show ltm dns cache records msg cache casino [qname avantel.com]
+
+##########################################
+
+######## REBUILD DEVICE TRUST FROM TMSH ##########
+
+#Both Units:
+tmsh delete cm trust-domain all
+
+#Unit-01
+tmsh modify cm trust-domain Root ca-devices add { 10.154.162.1} name jadams-BIG-IP-VE-PROXY1.pslab.local username admin password admin
+
+\\ ...Info lost in conversion.
+
+######## Loading UCS Onto Lab Unit (Or when you don't have a valid copy of the SSL Certs/Keys) ########
+
+v11.x
+
+:%s/key \/Common\/.*/key \/Common\/default.key/g
+:%s/cert \/Common\/.*/cert \/Common\/default.crt/g
+:%s/chain \/Common\/.*/chain \/Common\/default.crt/g
+:%s/ca-file \/Common\/.*crt/ca-file none/g
+
+# Or in sed:
+
+find /config/ -xdev -type f ! -path '*bak*' -name "bigip.conf" -exec sed -i 's/key \/Common\/.*/key \/Common\/default.key/g' {} +
+find /config/ -xdev -type f ! -path '*bak*' -name "bigip.conf" -exec sed -i 's/cert \/Common\/.*/cert \/Common\/default.crt/g' {} +
+find /config/ -xdev -type f ! -path '*bak*' -name "bigip.conf" -exec sed -i 's/chain \/Common\/.*/chain \/Common\/default.crt/g' {} +
+find /config/ -xdev -type f ! -path '*bak*' -name "bigip.conf" -exec sed -i 's/ca-file \/Common\/.*crt/ca-file none/g' {} +
+
+######################################################################################
+
+################ GTM / DNS ################
+
+On the GTM
+
+lsof -nPiTCP:4353 > /var/tmp/1-861834795-netstat-RTP-gtm.txt
+
+On your LTM's
+lsof -nPiTCP:4353 > /var/tmp/1-861834795-netstat-RTP-ltm-1.txt
+
+# Example Output #
+COMMAND   PID USER   FD   TYPE   DEVICE SIZE/OFF NODE NAME
+big3d    7838 root    6u  IPv6   172894      0t0  TCP *:4353 (LISTEN)
+big3d    7838 root    7u  IPv6 26444783      0t0  TCP 172.16.0.1:4353->172.16.0.1:57764 (ESTABLISHED)
+big3d    7838 root    8u  IPv6 26444790      0t0  TCP 10.154.162.1:4353->10.154.162.1:42840 (ESTABLISHED)
+big3d    7838 root    9u  IPv6 26444791      0t0  TCP 10.10.0.1:4353->10.10.0.1:57352 (ESTABLISHED)
+gtmd    25864 root    8u  IPv6 26444782      0t0  TCP 172.16.0.1:57764->172.16.0.1:4353 (ESTABLISHED)
+gtmd    25864 root    9u  IPv6 26444784      0t0  TCP 10.154.162.1:42840->10.154.162.1:4353 (ESTABLISHED)
+gtmd    25864 root   10u  IPv6 26444785      0t0  TCP 10.10.0.1:57352->10.10.0.1:4353 (ESTABLISHED)
+
+###############################################
+
+######## Enable Debugging ########
+
+# See: scripts/gtm_debug_60s.sh
+
+#ONE-LINER
+# read -p "Case Number: " SR_NUMBER; echo "Enabling Debugging..." && tmsh -c "modify /sys db log.gtm.level value debug; modify /sys db log.big3d.level value debug; modify /sys db gtm.debugprobelogging value enable"; i=0; while [ $i -lt 60 ]; do echo "Collected for $i Seconds... $((60-$i)) Seconds Remaining."; i=$[$i+10]; sleep 10; done; tmsh -c "modify /sys db log.gtm.level value notice; modify /sys db log.big3d.level value notice; modify /sys db gtm.debugprobelogging value disable" && echo "Debugging disabled."; qkview -cC -s0 -f /var/tmp/${SR_NUMBER}.$(echo $HOSTNAME | cut -d'.' -f1).$(date +%F.%H%M%S).v$(awk '$1 == "Build:" || $1 == "Version:" {print $2}' /VERSION | sed ':a;N;$!ba;s/\n/_HF-/g').qkview
+
+==========================================================
+v9.x / v10.x
+
+enable debug logging on your GTM
+b db log.gtm.level debug
+b db gtm.debugprobelogging enable
+b db log.big3d.level debug
+
+disable debug logging on your GTM
+
+b db log.tm.Level notice
+b db gtm.debugprobelogging disable
+b db log.big3d.level notice
+
+Query Logging
+b db GTM.QueryLogging disable
+b db GTM.QueryLogging enable
+
+======================================================
+v11.x / 10.x
+
+Enable
+
+tmsh
+create cli transaction
+modify /sys db log.gtm.level value debug
+modify /sys db log.big3d.level value debug
+modify /sys db gtm.debugprobelogging value enable
+modify /sys db gtm.querylogging value enable
+modify /sys db log.tmm.level value debug
+submit cli transaction
+
+tmsh -c "modify /sys db log.gtm.level value debug; modify /sys db log.big3d.level value debug; modify /sys db gtm.debugprobelogging value enable; modify /sys db gtm.querylogging value enable"
+
+Disable
+
+tmsh
+create cli transaction
+modify /sys db log.gtm.level value notice
+modify /sys db log.big3d.level value notice
+modify /sys db gtm.debugprobelogging value disable
+modify /sys db gtm.querylogging value disable
+modify /sys db log.tmm.level value notice
+submit cli transaction
+
+tmsh -c "modify /sys db log.gtm.level value notice; modify /sys db log.big3d.level value notice; modify /sys db gtm.debugprobelogging value disable"
+
+tmsh -c "modify /sys db log.gtm.level value notice; modify /sys db log.big3d.level value notice; modify /sys db gtm.debugprobelogging value disable; modify /sys db gtm.querylogging value disable"
+
+
+#####################################################################################################
+
+# Generate an md5 checksum and package each core file into a tarball
+
+  rm -f /var/core/*md5 && for i in $(ls /var/core) ; do md5sum /var/core/$i > /var/core/$i.md5; done; tar -czvf /shared/tmp/case_number.$(getHostName).$(getPromptStatus | sed 's/[ :/]/_/g').$(date +%F.%H%M%S).v$(awk '$1=="Build:"{b=$2}$1=="Version:"{v=$2}END{print v "_HF-" b}' /VERSION).tgz /var/core/*
+
+# WATCH INSTALLATION AND TAIL LIVEINSTALL LOG
+
+  watch -n1 "tmsh show sys software; tail -n 30 /var/log/liveinstall.log"
+
+
+# BIG-IQ Security - AFM restcurl calls:
+
+  restcurl /cm/firewall/tasks/declare-mgmt-authority | grep status
+  restcurl /cm/firewall/tasks/discover-config | grep status
+  restcurl /cm/firewall/tasks/deploy-configuration | grep status
+  restcurl /cm/firewall/tasks/difference-config | grep status
+  restcurl /cm/firewall/tasks/snapshot-config | grep status
+
+# Search all files on all mounted filesystems for <string>
+
+  for i in $(mount | grep mapper | awk '{print $3}');do find $i -xdev -type f | egrep '<string>'; done
+
+# REMOVE SLASH R ( \r ) FROM UNIX FILES
+
+  perl -i -pe's/\r$//;' <file>
+
+# A HANDY ONE-LINER TO SORT LTM LOGS BY EVENT ID
+
+  for i in $(awk 'match($0, /[A-F0-9]{8}:[0-9A-F]/){print substr($0, RSTART, RLENGTH)}' ltm|sort -u); do echo -e "\n################### $i ##################\n";grep $i ltm ; done
+
+################# RMA DOCS #################
+
+K12880: Configuring a replacement BIG-IP device after a Return Materials Authorization \
+  https://support.f5.com/csp/article/K12880
+
+K13551: Configuring a replacement BIG-IP device after an RMA when no UCS archive is available \
+  https://support.f5.com/csp/article/K13551
+
+K7683: Connecting a serial terminal to a BIG-IP system \
+  https://support.f5.com/csp/article/K7683
+
+K13148: Overview of default management access settings for F5 products \
+  https://support.f5.com/csp/article/K13148
+
+################# RMA DOCS #################
+
+# DECODE BIG-IP SERVER COOKIE
+
+  echo <cookie-value> | perl -ne'print join ".", map {hex} reverse ((sprintf "%08x", split /\./, $_) =~ /../g);'
+
+
+# WATCH INSTALLATION AND TAIL LIVEINSTALL LOG
+
+  watch -n1 "tmsh show sys software; tail -n 30 /var/log/liveinstall.log"
+
+# BIG-IQ Observe scheduled backup operations:
+
+  restcurl -u admin /shared/task-scheduler/scheduler'?$select=id,status,name,task
+
+# DOCS
+
+SOL10328: Forcing a file system check on the next system reboot \
+  https://support.f5.com/h2sh list sys db | grep .level | awk '{print $3}') ; do printf "list sys db $i value; " ; done)" | less
+
+########## Echo Command To Output Time of Day (In Seconds) ##########
+
+  printf "%05d" $(echo $((10#$(($(date +%H)*60*60))+10#$((10#$(date +%M)*60))+10#$(date +%S))))
+
+# Severity Descriptions
+
+Severity 1 - Site Down:
+
+  "Software or hardware conditions on your F5 device are preventing the execution of critical business activities. The device will not power up or is not passing traffic.
+
+Severity 2 - Site at Risk:
+
+  "Software or hardware conditions on your F5 device are preventing or significantly impairing high-level commerce or business activities"
+
+Severity 3 - Performance Degraded:
+
+  "Software or hardware conditions on your F5 device are creating degradation of service or functionality in normal business or commerce activities.
+
+Severity 4 - General Assistance:
+
+  "Questions regarding configurations ("how to"), troubleshooting non-critical issues, or requests for product functionality that is not part of the current production feature set."
+
+# BIG-IQ CSV FORMAT VIRTUAL SERVERS
+
+  restcurl '/cm/adc-core/current-config/ltm/virtual' | jq -r '.items[] | {name,destinationAddress, destinationPort, deviceName: .deviceReference.name} | join(", ") '
+
+# Save a custom QKView, no snap-length, with a unique file name
+
+  qkview -s0 -cC -f /var/tmp/_CASE_NUMBER_.$(getHostName).$(getPromptStatus | sed 's/[ :/]/_/g').$(date +%F.%H%M%S).v$(awk '$1=="Build:"{b=$2}$1=="Version:"{v=$2}END{print v "_HF-" b}' /VERSION).qkview
+
+# EXCEL cell to convert MB and GB to KB
+
+# If Cell E3 contains an 'm' multiply the value by 1024.
+# If Cell E3 contains a  'g' Multiple the value by (1024 * 1024)
+# If cell E3 does not contain an 'm' or a 'g', then value = E3
+
+  =IF(ISNUMBER(SEARCH("m",E3)),LEFT(E3,LEN(E3)-1)*1024,IF(ISNUMBER(SEARCH("G",E3)),LEFT(E3,LEN(E3)-1)*1024*1024,E3))Ision:"{v=$2}END{print v "_HF-" b}' /VERSION).pcap -v
+
+# tshark -- Formate output as a table
+
+  tshark -r CAPTURE.pcap -Eseparator="," -Eheader=y -Tfields -e frame.number -e frame.time -e ip.src -e ip.dst -e udp.srcport -e udp.dstport -e _ws.col.Info | sed -e 's/^/| /'L -e 's/,/,| /g' -e 's/$/,|/' | column -t -s,
+
+# tshark -- LOOK FOR DHE YS_LEN 127
+
+  find . -xdev -type f -name "*pcap" -print0 | while read -d $'\0' file;do echo $file; tshark -r "$file" -Y ssl.handshake.type==12 -Tfields -essl.handshake.ys_len -essl.handshake.p_len;done
+
+
+# BASH - LTM - LOG - Looking for Failover Event
+
+  tailf /var/log/ltm | egrep -i 'ha|cmi|standby|failover|active|peer|conflict|reboot'
+
+# QKVIEW NOT FINISHING?
+
+  strace -rtttvfs 2048 qkview &>/var/tmp/qkview.strace.out
+
+# bash -- SED - Remove double whack from a file
+
+  sed -i 's/\\\\/\\/g/' <filename>
+  sed -i 's/\\\\r\\\\n/\\r\\n/g'
+___________________________________________________
+
+# bash -- vim -- RegEx -- Delete every line that does _NOT_ contain the previous search:
+
+  :let @a=""|%s//\=setreg('A', submatch(0), 'l')/g|%d _|pu a|0d _
+
+  ## CREDIT: http://stackoverflow.com/questions/4503748/remove-everything-except-regex-match-in-vim
+
+# V12.0.0 TIPS:
+
+# To listen in on the link bWetween errdefsd and the Management Port Log Destination, you can run the following command:
+
+  tcpdump -nni lo -s 0 -X 'udp port 3794'
+
+# tmos -- Save a unique UCS File ##########
+
+  tmsh save sys ucs $(getHostName).$(getPromptStatus | sed 's/[ :/]/_/g').$(date +%F.%H%M%S).v$(awk '$1=="Build:"{b=$2}$1=="Version:"{v=$2}END{print v "_HF-" b}' /VERSION)
+
+# tmos -- CREATE SCF AND TAR FILE
+
+  tmsh save /sys config file $(getHostName).$(getPromptStatus | sed 's/[ :/]/_/g').$(date +%F.%H%M%S).v$(awk '$1=="Build:"{b=$2}$1=="Version:"{v=$2}END{print v "_HF-" b}' /VERSION) no-passphrase tar-file $(getHostName).$(getPromptStatus | sed 's/[ :/]/_/g').$(date +%F.%H%M%S).v$(awk '$1=="Build:"{b=$2}$1=="Version:"{v=$2}END{print v "_HF-" b}' /VERSION)-tar
+
+
+# Save a custom QKView, no snap-length, with a unique file name
+
+  qkview -s0 -cC --progress-bar -f /var/tmp/_CASE_NUMBER_.$(getHostName).$(getPromptStatus | sed 's/[ :/]/_/g').$(date +%F.%H%M%S).v$(awk '$1=="Build:"{b=$2}$1=="Version:"{v=$2}END{print v "_HF-" b}' /VERSION).qkview
+
+# bash -- Create a unique filename every second...COPY ME
+
+  $(getHostName).$(getPromptStatus | sed 's/[ :/]/_/g').$(date +%F.%H%M%S).v$(awk '$1=="Build:"{b=$2}$1=="Version:"{v=$2}END{print v "_HF-" b}' /VERSION)
+
+# bash -- Full Log Tarball
+
+  tar czvf /var/tmp/_CASE_NUMBER_.$(getHostName).$(getPromptStatus | sed 's/[ :/]/_/g').$(date +%F. BIG-IP platforms (11.x - 12.x) \
+  https://support.f5.com/csp/article/K13163?sr=36482905
+
+# DOCS
+
+K13132: Backing up and restoring BIG-IP configuration files (11.x - 12.x) \
+  https://support.f5.com/csp/article/K13132
+
+K11318: Backing up and restoring BIG-IP configuration files (10.x) \
+  https://support.f5.com/csp/article/K11318
+
+K12880: Configuring a replacement BIG-IP device after a Return Materials Authorization \
+  https://support.f5.com/csp/article/K12880
+
+K13551: Configuring a replacement BIG-IP device after an RMA when no UCS archive is available \
+  https://support.f5.com/csp/article/K1355f1
+
+K13148: Overview of default management access settings for F5 products \
+  https://support.f5.com/csp/article/K13148
+
+# GTM RMA TIPS
+
+K14083: Preventing synchronization when installing a UCS archive on a BIG-IP GTM system \
+  https://support.f5.com/csp/article/K14083
+
+K13542: Restoring configuration data to a BIG-IP GTM RMA unit \
+  https://support.f5.com/csp/article/K13542
+
+# EAV MONITOR DOCS
+
+K8154: The BIG-IP GTM EAV gmonitor considerations \
+  https://support.f5.com/csp/article/K8154
+
+A Brief Introduction To External Application Verification Monitors \
+  https://devcentral.f5.com/articles/a-brief-introduction-to-external-application-verification-monitors
+
+DevCentral Wiki Home \
+  https://devcentral.f5.com/wiki/default.aspx/AdvDesignConfig/TemplateForExternalLtmMonitors.html
+
+Template For External Monitors \
+  https://devcentral.f5.com/codeshare/template-for-external-monitors
+
+# FILE TRANSFEiR
+
+K175: Transferring files to or from an F5 system \
+	https://support.f5.com/csp/article/K175
+
+K2486: Providing files to F5 Technical Support \
+	https://support.f5.com/csp/article/K2486
+
+K12878: Generating BIG-IP diagnostic data using the qkview utility (10.x - 11.x) \
+	https://support.f5.com/csp/article/K12878
+
+# TCPDUMP RESOURCES
+
+K411: Overview of packet tracing with the tcpdump utility \
+	https://support.f5.com/csp/article/K411
+
+K10328: Forcing a file system check on the next system reboot (10.x - 11.x)
+  https://support.f5.com/csp/article/K10328
+
+K2289: Using advanced tcpdump filters \
+	https://support.f5.com/csp/article/K2289
+
+K4714: Performing a packet trace and providing the results to F5 Technical Support \
+	https://support.f5.com/csp/article/K4714
+
+K5564: Saving large tcpdump packet traces when disk space is limited \
+	https://support.f5.com/csp/article/K5564
+
+K13637: Capturing internal TMM information with tcpdump \
+	https://support.f5.com/csp/article/K13637

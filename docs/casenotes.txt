@@ -1,0 +1,28 @@
+# This is simply a list of case notes I want to keep on-hand.
+#
+#
+# Use gpg to decrypt an scf after customer runs 'ccmode' (Common Criteria) script;
+# Common Criteria Mode is effectively 'Appliance Mode', but not quite.
+# We have very little documentation on this script...as in, a single document
+# published against v10.2.2. The script appears to have been maintained;
+# https://askf5.f5.com/content/dam/f5/kb/global/solutions/sol14525_images.html/Common%20Criteria%20Supplement%20EAL2%20(10-2020-R-0039)%20Version%203.1.pdf
+# ID 646760 for example. https://support.f5net.com/v2/tools/search.php?M=MainSearchPage&BK=1&q=ccmode
+
+SR 1-367886352 - https://tron.f5net.com/sr/1-3678863524/#1-1P7SK3V
+
+########################################################################################
+
+# https://tron.f5net.com/sr/C2674170/
+\\ You can perform a REST API call to export a list of all Virtual Servers like this:
+  restcurl -u admin:admin mgmt/cm/adc-core/working-config/ltm/virtual
+
+\\ You can pipe it to jq for pretty printing
+  restcurl -u admin:admin mgmt/cm/adc-core/working-config/ltm/virtual | jq -r '.items[]'
+
+\\ You can filter the results like this;
+  restcurl -u admin:admin mgmt/cm/adc-core/working-config/ltm/virtual | jq -r '.items[] | {device: .deviceReference.name,name,destinationAddress,destinationPort}'
+
+\\ And you can output those results to a comma-delimited format like this:
+  restcurl -u admin:admin mgmt/cm/adc-core/working-config/ltm/virtual | jq -r '.items[] | {device: .deviceReference.name,name,destinationAddress,destinationPort} | join(", ")'
+
+########################################################################################

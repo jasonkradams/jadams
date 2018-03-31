@@ -1,0 +1,1 @@
+curl -sk https://10.232.134.3/mgmt/shared/authn/login -d@tokenauth  | json_pp

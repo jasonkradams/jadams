@@ -1,0 +1,41 @@
+\\ FULL CREDIT: https://docs.f5net.com/display/~beanwu/Irule+to+get+both+client+side+and+server+side+ssl+session+ID+and+key //
+
+# Use this to decrypt ANY SSL Virtual Server Traffic.
+# Procedure:
+# 1. Create the iRule
+# 2. Apply iRule to Virtual Server.
+# 3. Perform packet capture while reproducing the problem [Ensure you capture from the start [SYN] of the stream.
+# 4. Execute the script:  p.sh <capture.pcap>
+
+  Step 1: apply the Irule to VS and run tcpdump and make sure client ssl profile cache size is not 0 (when it is 0, bigip will not send ssl session ID):
+
+  when CLIENTSSL_HANDSHAKE {
+      log local0. "Client side [IP::client_addr]:[TCP::client_port] <-> [IP::local_addr clientside]:[TCP::local_port clientside] RSA Session-ID: [SSL::sessionid] Master-Key: [SSL::sessionsecret]"
+  }
+  when SERVERSSL_HANDSHAKE {
+      log local0. "Client side [IP::client_addr]:[TCP::client_port] <-> [IP::local_addr clientside]:[TCP::local_port clientside] server side [IP::local_addr]:[TCP::local_port] <-> [IP::server_addr]:[TCP::server_port] RSA Session-ID: [SSL::sessionid] Master-Key: [SSL::sessionsecret]"
+  }
+   
+  Step 2: create a bash script as below
+  [root@cs:Active:Standalone] ssl # cat p.sh
+  #! /bin/bash
+  echo "usage:  ./script_name tcpdump_file_name"
+  dumpfile=$1
+  rm -f $1_log
+  rm -f $1_tcpdump
+  # Thanks Messi added a feature to remove the route domain %xx from log.
+  grep -v SERVERSSL /var/log/ltm |grep -Po "Client side.*"|awk '{if ($3 ~ /%/ ) gsub  (/%[0-9]*/, "",$0); print $3 "_"  $5,$NF}' > $1_log
+  grep SERVERSSL /var/log/ltm |grep -Po "server side.*"|awk '{if ($3 ~ /%/ ) gsub  (/%[0-9]*/, "",$0); print $3 "_" $5,$NF}' >> $1_log
+  tshark -nnnr $1 -R "ssl.handshake.type == 2" -T fields -e ip.dst -e tcp.dstport -e ip.src -e tcp.srcport -e ssl.handshake.session_id |sed 's/://g'|awk '{print $1 ":" $2 "_" $3 ":" $4, $5}' > $1_tcpdump
+  # tshark -nnnr $1 -R "ssl.handshake.type == 2" -T fields -e ip.dst -e tcp.dstport -e ip.src -e tcp.srcport -e ssl.handshake.session_id -o http.ssl.port:443,8443,8843|sed 's/://g'|awk '{print $1 ":" $2 "_" $3 ":" $4, $5}' > $1_tcpdump  <<<<<< use this line instead of above line if server port is not 443, for example 8443, and 8843
+  awk 'NR==FNR{a[$1]=1; b[$1]=$2}NR>FNR{if(a[$1]==1)print "RSA Session-ID:"b[$1],"Master-Key:"$2}' $1_tcpdump $1_log |sort |uniq> $1_pms
+  rm -f $1_log
+  rm -f $1_tcpdump
+  echo "====== PMS file $1_pms generated ======"
+   
+   
+  Step 3: chmod 755 p.sh and run this script. 
+  [root@cs:Active:Standalone] ssl # ./p.sh sslresolver1.pcap
+  usage: chmod 777 script_name and then run ./pms_script.sh tcpdump_file_name
+  Running as user "root" and group "root". This could be dangerous.
+  ====== PMS file sslresolver1.pcap_pms generated ======
