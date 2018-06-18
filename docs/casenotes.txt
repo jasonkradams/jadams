@@ -26,3 +26,41 @@ SR 1-367886352 - https://tron.f5net.com/sr/1-3678863524/#1-1P7SK3V
   restcurl -u admin:admin mgmt/cm/adc-core/working-config/ltm/virtual | jq -r '.items[] | {device: .deviceReference.name,name,destinationAddress,destinationPort} | join(", ")'
 
 ########################################################################################
+
+# VIPRION #
+
+# Want to have each blade send console messages over the backplane?
+
+# With some minor edits to the syslog configuration and the netconsole configuration, we can have each blade transmit its console messages over the Viprion backplane so that the other blades can record those messages via syslog. Here's how to do it:
+
+# First, we need to use tmsh to include some extra configuration for syslog.
+# The following command has multiple lines, but it needs to be pasted into the shell as a single command. The double quotes around after the word 'include' ensure that the contents are treated as single argument
+
+# Copy and paste this whole block into the shell, as-is
+tmsh modify sys syslog include "source s_cluster_console {
+  udp(ip(127.3.0.255) port(514));
+};
+destination d_cluster_console {
+  file(/var/log/cluster_console create_dirs(yes));
+};
+log {
+  source(s_cluster_console);
+  destination(d_cluster_console);
+};"
+
+
+# Copy and paste this block too
+tmsh modify sys log-rotate syslog-include "
+/var/log/cluster_console {
+   compress
+   missingok
+   notifempty
+   rotate 10
+   sharedscripts
+    postrotate
+        touch /var/log/hup_syslog
+    endscript
+}
+"
+
+########################################################################################
